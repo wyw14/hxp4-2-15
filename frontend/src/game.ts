@@ -142,6 +142,20 @@ export class FungiGame {
 
     section.appendChild(grid);
 
+    const reachability = this.gameState!.reachability;
+    if (reachability && !reachability.isReachable) {
+      const warningBox = document.createElement('div');
+      warningBox.className = 'reachability-warning';
+      warningBox.innerHTML = `
+        <div style="font-weight: bold; margin-bottom: 6px;">⚠️ 地图警告：存在不可达营养源</div>
+        <div style="font-size: 13px; color: #ffcdd2;">
+          有 ${reachability.unreachableNutrientIds.length} 个营养源被污染区完全包围，无法到达起点。
+          建议点击"🎮 新游戏"重新生成地图。
+        </div>
+      `;
+      section.appendChild(warningBox);
+    }
+
     const progressWrap = document.createElement('div');
     progressWrap.style.marginBottom = '24px';
     progressWrap.innerHTML = `
@@ -215,6 +229,10 @@ export class FungiGame {
       <div class="legend-item">
         <div class="legend-color" style="background: #2a2a4a; border: 1px dashed #7ed957;"></div>
         <div class="legend-text">⬜ 可蔓延区域（虚线框）</div>
+      </div>
+      <div class="legend-item">
+        <div class="legend-color" style="background: #c68642; border: 3px dashed #ff1744;"></div>
+        <div class="legend-text">⚠️ 不可达营养源（红色标记）</div>
       </div>
     `;
 

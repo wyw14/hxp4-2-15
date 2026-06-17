@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import { GameState, HexCell, HexCoord, HexType } from './types';
-import { coordKey, generateHexGrid, hexDistance, getNeighbors, isInRadius, findPathAStar } from './hexUtils';
+import { coordKey, generateHexGrid, hexDistance, getNeighbors, isInRadius, findPathAStar, checkReachability } from './hexUtils';
 
 const LEVEL_CONFIGS: Record<number, { radius: number; nutrients: number; polluted: number }> = {
   1: { radius: 3, nutrients: 2, polluted: 3 },
@@ -26,62 +26,73 @@ function shuffle<T>(arr: T[]): T[] {
 export function createNewGame(level: number = 1, customRadius?: number): GameState {
   const config = LEVEL_CONFIGS[level] || LEVEL_CONFIGS[5];
   const radius = customRadius ?? config.radius;
+  const MAX_ATTEMPTS = 50;
 
-  const allCoords = generateHexGrid(radius);
-  const cells: Record<string, HexCell> = {};
-  for (const coord of allCoords) {
-    cells[coordKey(coord)] = { coord, type: HexType.EMPTY };
-  }
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    const allCoords = generateHexGrid(radius);
+    const cells: Record<string, HexCell> = {};
+    for (const coord of allCoords) {
+      cells[coordKey(coord)] = { coord, type: HexType.EMPTY };
+    }
 
-  const startCoord: HexCoord = { q: 0, r: 0 };
-  cells[coordKey(startCoord)].type = HexType.START;
+    const startCoord: HexCoord = { q: 0, r: 0 };
+    cells[coordKey(startCoord)].type = HexType.START;
 
-  const availableForPlacement = shuffle(
-    allCoords.filter((c) => hexDistance(c, startCoord) >= 2)
-  );
+    const availableForPlacement = shuffle(
+      allCoords.filter((c) => hexDistance(c, startCoord) >= 2)
+    );
 
-  const nutrients: string[] = [];
-  let nutrientIdx = 0;
-  for (const coord of availableForPlacement) {
-    if (nutrientIdx >= config.nutrients) break;
-    const key = coordKey(coord);
-    if (cells[key].type === HexType.EMPTY) {
-      cells[key].type = HexType.NUTRIENT;
-      cells[key].nutrientId = `nutrient_${nutrientIdx}`;
-      nutrients.push(cells[key].nutrientId!);
-      nutrientIdx++;
+    const nutrients: string[] = [];
+    let nutrientIdx = 0;
+    for (const coord of availableForPlacement) {
+      if (nutrientIdx >= config.nutrients) break;
+      const key = coordKey(coord);
+      if (cells[key].type === HexType.EMPTY) {
+        cells[key].type = HexType.NUTRIENT;
+        cells[key].nutrientId = `nutrient_${nutrientIdx}`;
+        nutrients.push(cells[key].nutrientId!);
+        nutrientIdx++;
+      }
+    }
+
+    let pollutedCount = 0;
+    for (const coord of availableForPlacement) {
+      if (pollutedCount >= config.polluted) break;
+      const key = coordKey(coord);
+      if (cells[key].type === HexType.EMPTY) {
+        cells[key].type = HexType.POLLUTED;
+        pollutedCount++;
+      }
+    }
+
+    const reachability = checkReachability(cells, startCoord, radius, [HexType.POLLUTED]);
+
+    if (reachability.isReachable || attempt === MAX_ATTEMPTS - 1) {
+      const myceliumCells: HexCoord[] = [startCoord];
+      const optimalSteps = reachability.isReachable
+        ? calculateOptimalSteps(cells, startCoord, radius, nutrients)
+        : nutrients.length * 3;
+
+      return {
+        id: uuidv4(),
+        level,
+        gridRadius: radius,
+        cells,
+        nutrients,
+        connectedNutrients: [],
+        startCoord,
+        myceliumCells,
+        steps: 0,
+        optimalSteps,
+        status: 'playing',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        reachability,
+      };
     }
   }
 
-  let pollutedCount = 0;
-  for (const coord of availableForPlacement) {
-    if (pollutedCount >= config.polluted) break;
-    const key = coordKey(coord);
-    if (cells[key].type === HexType.EMPTY) {
-      cells[key].type = HexType.POLLUTED;
-      pollutedCount++;
-    }
-  }
-
-  const myceliumCells: HexCoord[] = [startCoord];
-
-  const optimalSteps = calculateOptimalSteps(cells, startCoord, radius, nutrients);
-
-  return {
-    id: uuidv4(),
-    level,
-    gridRadius: radius,
-    cells,
-    nutrients,
-    connectedNutrients: [],
-    startCoord,
-    myceliumCells,
-    steps: 0,
-    optimalSteps,
-    status: 'playing',
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-  };
+  throw new Error('无法生成可达的地图');
 }
 
 function calculateOptimalSteps(

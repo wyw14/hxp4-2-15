@@ -6,6 +6,7 @@ import {
   hexCornersPath,
   getNeighbors,
   PixelCoord,
+  checkReachability,
 } from './hexUtils';
 
 interface HexGridOptions {
@@ -33,6 +34,7 @@ export class HexGridRenderer {
   private cellGroups = new Map<string, SVGGElement>();
   private pathPreviewGroup: SVGGElement | null = null;
   private reachableKeys = new Set<string>();
+  private unreachableNutrientKeys = new Set<string>();
   private offsetX = 0;
   private offsetY = 0;
 
@@ -50,6 +52,7 @@ export class HexGridRenderer {
   setGameState(game: GameState): void {
     this.gameState = game;
     this.updateReachable();
+    this.updateUnreachableNutrients();
     this.render();
   }
 
@@ -69,6 +72,18 @@ export class HexGridRenderer {
         if (cell.type === HexType.POLLUTED) continue;
         this.reachableKeys.add(nKey);
       }
+    }
+  }
+
+  private updateUnreachableNutrients(): void {
+    this.unreachableNutrientKeys.clear();
+    if (!this.gameState) return;
+
+    const reachability = this.gameState.reachability
+      ?? checkReachability(this.gameState.cells, this.gameState.startCoord, this.gameState.gridRadius, [HexType.POLLUTED]);
+
+    for (const coord of reachability.unreachableNutrientCoords) {
+      this.unreachableNutrientKeys.add(coordKey(coord));
     }
   }
 
@@ -129,8 +144,9 @@ export class HexGridRenderer {
     const cx = pixel.x + this.offsetX;
     const cy = pixel.y + this.offsetY;
     const color = COLORS[cell.type];
+    const isUnreachableNutrient = this.unreachableNutrientKeys.has(key);
 
-    g.setAttribute('class', `hex-cell${this.reachableKeys.has(key) ? ' reachable' : ''}`);
+    g.setAttribute('class', `hex-cell${this.reachableKeys.has(key) ? ' reachable' : ''}${isUnreachableNutrient ? ' unreachable-nutrient' : ''}`);
     g.setAttribute('data-q', String(cell.coord.q));
     g.setAttribute('data-r', String(cell.coord.r));
 
@@ -138,15 +154,39 @@ export class HexGridRenderer {
     shape.setAttribute('d', hexCornersPath({ x: cx, y: cy }, this.size - 2));
     shape.setAttribute('fill', color.fill);
     shape.setAttribute('stroke', color.stroke);
-    shape.setAttribute('stroke-width', this.reachableKeys.has(key) ? '2' : '1.5');
+    shape.setAttribute('stroke-width', this.reachableKeys.has(key) || isUnreachableNutrient ? '3' : '1.5');
     shape.setAttribute('class', 'hex-shape');
 
-    if (this.reachableKeys.has(key)) {
+    if (isUnreachableNutrient) {
+      shape.setAttribute('stroke', '#ff1744');
+      shape.setAttribute('stroke-dasharray', '6 3');
+    } else if (this.reachableKeys.has(key)) {
       shape.setAttribute('stroke', '#7ed957');
       shape.setAttribute('stroke-dasharray', '4 2');
     }
 
     g.appendChild(shape);
+
+    if (isUnreachableNutrient) {
+      const warningBg = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      warningBg.setAttribute('cx', String(cx + this.size * 0.45));
+      warningBg.setAttribute('cy', String(cy - this.size * 0.45));
+      warningBg.setAttribute('r', String(this.size * 0.28));
+      warningBg.setAttribute('fill', '#ff1744');
+      warningBg.setAttribute('stroke', '#fff');
+      warningBg.setAttribute('stroke-width', '1.5');
+      g.appendChild(warningBg);
+
+      const warningText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      warningText.setAttribute('x', String(cx + this.size * 0.45));
+      warningText.setAttribute('y', String(cy - this.size * 0.40));
+      warningText.setAttribute('text-anchor', 'middle');
+      warningText.setAttribute('font-size', String(this.size * 0.35));
+      warningText.setAttribute('fill', '#fff');
+      warningText.setAttribute('font-weight', 'bold');
+      warningText.textContent = '!';
+      g.appendChild(warningText);
+    }
 
     this.addCellContent(cell, cx, cy, g);
 

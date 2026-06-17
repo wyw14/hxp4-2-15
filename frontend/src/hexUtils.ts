@@ -1,4 +1,4 @@
-import { HexCoord, HexCell, HexType } from './types';
+import { HexCoord, HexCell, HexType, ReachabilityResult } from './types';
 
 export const HEX_DIRECTIONS: HexCoord[] = [
   { q: 1, r: 0 },
@@ -145,4 +145,51 @@ export function hexCorners(center: PixelCoord, size: number): PixelCoord[] {
 export function hexCornersPath(center: PixelCoord, size: number): string {
   const corners = hexCorners(center, size);
   return corners.map((c, i) => `${i === 0 ? 'M' : 'L'} ${c.x} ${c.y}`).join(' ') + ' Z';
+}
+
+export function checkReachability(
+  cells: Record<string, HexCell>,
+  startCoord: HexCoord,
+  gridRadius: number,
+  blockedTypes: HexType[] = [HexType.POLLUTED]
+): ReachabilityResult {
+  const reachableKeys = new Set<string>();
+  const queue: HexCoord[] = [startCoord];
+  reachableKeys.add(coordKey(startCoord));
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    const neighbors = getNeighbors(current);
+
+    for (const neighbor of neighbors) {
+      const neighborKey = coordKey(neighbor);
+      if (reachableKeys.has(neighborKey)) continue;
+      if (!isInRadius(neighbor, gridRadius)) continue;
+
+      const cell = cells[neighborKey];
+      if (!cell) continue;
+      if (blockedTypes.includes(cell.type)) continue;
+
+      reachableKeys.add(neighborKey);
+      queue.push(neighbor);
+    }
+  }
+
+  const unreachableNutrientIds: string[] = [];
+  const unreachableNutrientCoords: HexCoord[] = [];
+
+  for (const cell of Object.values(cells)) {
+    if (cell.type === HexType.NUTRIENT && cell.nutrientId) {
+      if (!reachableKeys.has(coordKey(cell.coord))) {
+        unreachableNutrientIds.push(cell.nutrientId);
+        unreachableNutrientCoords.push(cell.coord);
+      }
+    }
+  }
+
+  return {
+    isReachable: unreachableNutrientIds.length === 0,
+    unreachableNutrientIds,
+    unreachableNutrientCoords,
+  };
 }

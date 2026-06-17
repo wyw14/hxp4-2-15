@@ -17,6 +17,12 @@ export interface HexCell {
   nutrientId?: string;
 }
 
+export interface ReachabilityResult {
+  isReachable: boolean;
+  unreachableNutrientIds: string[];
+  unreachableNutrientCoords: HexCoord[];
+}
+
 export interface GameState {
   id: string;
   level: number;
@@ -31,6 +37,7 @@ export interface GameState {
   status: 'playing' | 'won' | 'lost';
   createdAt: number;
   updatedAt: number;
+  reachability?: ReachabilityResult;
 }
 
 export interface ApiResponse<T = void> {
